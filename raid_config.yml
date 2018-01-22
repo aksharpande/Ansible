@@ -1,0 +1,48 @@
+---
+- gather_facts: False
+  hosts: new
+  tasks:
+    - name: checking Virtual disks on server
+      raw: racadm raid get vdisks
+      register: msg
+    - debug: var=msg 
+    - name: deleting pre existing config
+      raw: "racadm raid deletevd:{{ item }}"
+      with_items: "{{ msg.stdout_lines }}"
+    - name: creating job queue to delete the vdisks
+      raw: racadm jobqueue create RAID.Integrated.1-1
+      register: msg_job
+    - debug: var=msg_job
+    - name: Reboot server to execute job
+      raw: racadm serveraction hardreset
+    - pause:
+       minutes: 5
+    - name: checking physical disks on server
+      raw: racadm raid get pdisks
+      register: msg
+    - debug: var=msg.stdout_lines
+    - name: creating empty list
+      set_fact:
+        my_string:
+    - name: adding values to string
+      set_fact:
+        my_string: "{{ my_string }}{{ item }},"
+      with_items: "{{ msg.stdout_lines }}"
+    - debug: var=my_string
+    - name: creating VD
+      raw: "racadm raid createvd:RAID.Integrated.1-1 -rl r10 -pdkey:{{ my_string }}"
+      register: msg
+    - debug: var=msg
+    - name: creating job queue to add the new vdisks
+      raw: racadm jobqueue create RAID.Integrated.1-1
+      register: msg_job
+    - debug: var=msg_job
+    - name: Reboot server to execute job
+      raw: racadm serveraction hardreset
+    - pause:
+       minutes: 5
+    - name: disabling lifecycle controller
+      raw: racadm set LifeCycleController.LCAttributes.LifecycleControllerState 0
+      register: msg
+    - debug: var=msg
+
