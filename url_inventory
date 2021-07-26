@@ -1,0 +1,73 @@
+#!/usr/bin/python
+from __future__ import (absolute_import, division, print_function)
+__metaclass__ = type
+
+DOCUMENTATION = r'''
+    name: rt_inventory
+    plugin_type: inventory
+    short_description: Returns Ansible inventory from RT
+    description: Returns Ansible inventory from RT
+    options:
+      plugin:
+          description: Name of the plugin
+          required: true
+          choices: ['url_inventory']
+      url:
+        description: url for for fetching the hosts
+        required: true
+      host_group:
+        description: hostgroup that would be created with this plugin
+        required: true
+'''
+from ansible.plugins.inventory import BaseInventoryPlugin
+from ansible.errors import AnsibleError, AnsibleParserError
+import requests
+import json
+
+class InventoryModule(BaseInventoryPlugin):
+    NAME = 'url_inventory'
+
+
+    def verify_file(self, path):
+        '''Return true/false if this is possibly a valid file for this plugin to
+consume
+        '''
+        valid = False
+        if super(InventoryModule, self).verify_file(path):
+            #base class verifies that file exists 
+            #and is readable by current user
+            if path.endswith(('.inventory.yml')):
+                valid = True
+        return valid
+
+    def parse(self, inventory, loader, path, cache):
+        '''Return dynamic inventory from source '''
+        super(InventoryModule, self).parse(inventory, loader, path, cache)
+
+        # Read the inventory YAML file
+        self._read_config_data(path)
+        try:
+           #Store options
+           self.plugin = self.get_option('plugin')
+           self.url = self.get_option('url')
+           self.host_group = self.get_option('host_group')
+        except:
+            raise AnsibleParserError( 'All options are required: {}'.format(e))
+        self._populate()
+    
+    def _populate(self):
+        '''Return the hosts and groups'''
+        self.myinventory = self._get_structured_inventory()
+        self.inventory.add_group(self.host_group)
+        for record in self.myinventory:
+            hostname = record['name']
+            if hostname:
+                self.inventory.add_host(host=record['name'], group=(self.host_group))
+                # inventory_data[self.host_group].append(record['name'])
+        #import pdb; pdb.set_trace()
+
+    def _get_structured_inventory(self):
+        #inventory_data = {}
+        r = requests.get(self.url)
+        hostlist = json.loads(r.text)
+        return hostlist
